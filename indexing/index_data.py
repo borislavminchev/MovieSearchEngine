@@ -10,29 +10,23 @@ es = Elasticsearch(
 
 df = pd.read_csv("./preprocessed_movies_clean.csv")
 
-# def save_row(i, row):
-#     print(i)
-#     document = row.to_dict()
-#     es.index(index="movies", id=document["id"], body=document)
 
-# [save_row(i,row) for i, row in df.iterrows()]  
+# actions = [
+#     {
+#         "_index": "movies",
+#         "_id": doc["id"],
+#         "_source": doc
+#     } 
+#     for doc in df.to_dict(orient="records")
+# ]
 
-actions = [
-    {
-        "_index": "movies",
-        "_id": doc["id"],
-        "_source": doc
-    } 
-    for doc in df.to_dict(orient="records")
-]
-
-try:
-    helpers.bulk(es, actions)
-except helpers.BulkIndexError as e:
-    print(f"Bulk indexing error: {e}")
-    print("Failed documents:")
-    for error in e.errors:
-        print(error)
+# try:
+#     helpers.bulk(es, actions)
+# except helpers.BulkIndexError as e:
+#     print(f"Bulk indexing error: {e}")
+#     print("Failed documents:")
+#     for error in e.errors:
+#         print(error)
 
 #
 # query = {
@@ -46,13 +40,35 @@ except helpers.BulkIndexError as e:
 
 # query = {
 #     "query": {
-#         "term": {
-#             "search_content": "science",
-#         }
+#         "query_string" : {
+#                  "query" : "star wars",
+#                  "fuzziness":0
+#           }
 #     }
 # }
 
-# response = es.search(index="movies", body=query, size=3000)
-# for hit in response["hits"]["hits"]:
-#     print(hit["_source"]["title"], hit["_score"])
+# query = {
+#   "query": {
+#     "match": {
+#       "search_content": "star wars"
+#     }
+#   }
+# }
+
+query = {
+    "query": {
+        "match": {
+            "search_content": "star"
+        }
+    }
+}
+
+
+try:
+    response = es.search(index="movies", body=query)
+    print(response["hits"]['total']['value'])
+    for hit in response["hits"]["hits"]:
+        print(hit["_source"]["title"], hit["_score"],  " ----> ", hit["_source"]["search_content"].lower().count("star wars"))
+except Exception as e:
+    print(f"Error: {e}")
 
