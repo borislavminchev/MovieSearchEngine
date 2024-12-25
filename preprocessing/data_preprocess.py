@@ -1,11 +1,11 @@
 import pandas as pd
+import numpy as np
 import re
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import unicodedata
 import nltk
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 # Download required NLTK resources
 nltk.download('punkt')
@@ -13,13 +13,13 @@ nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('punkt_tab')
 
-# # Load the dataset
+# Load the dataset
 df = pd.read_csv("./TMDB_all_movies.csv")
 
 # Select relevant columns
 columns_to_keep = [
-    "id", "title", "overview", "genres", "tagline", 
-    "cast", "director", "writers", "production_companies"
+    "id", "title", "overview", "genres", 
+    "cast", "director"
 ]
 df = df[columns_to_keep]
 
@@ -27,39 +27,41 @@ lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
 
 def preprocess_text(text):
-    # Tokenization
-    tokens = word_tokenize(text)
-    # Lowercasing
-    tokens = [word.lower() for word in tokens]
-    # Removal of Stopwords
-    tokens = [word for word in tokens if word not in stop_words]
-    # Character Normalization (remove accents, special characters)
+    tokens = word_tokenize(text)  # Tokenization
+    tokens = [word.lower() for word in tokens]  # Lowercasing
+    tokens = [word for word in tokens if word not in stop_words]  # Stopword removal
     tokens = [
-        unicodedata.normalize('NFKD', word)
-        .encode('ascii', 'ignore')
-        .decode('utf-8', 'ignore') 
-        for word in tokens
+        unicodedata.normalize('NFKD', word).encode('ascii', 'ignore').decode('utf-8', 'ignore')
+        for word in tokens  # Character Normalization
     ]
-    # Stemming or Lemmatization
-    tokens = [lemmatizer.lemmatize(word) for word in tokens]
-    # Join tokens back into a single string
+    tokens = [lemmatizer.lemmatize(word) for word in tokens]  # Lemmatization
     return " ".join(tokens)
 
+def clean_special_characters(text):
+    if not isinstance(text, str):
+        return ""
+    text = re.sub(r'["]{2,}', '', text)  # Replace multiple quotes
+    text = re.sub(r'^["]|["]$', '', text)  # Remove leading/trailing quotes
+    text = re.sub(r'[^\w\s\.,!?\'"]', '', text)  # Remove unwanted special characters
+    return text
+
 # Fill missing text fields with an empty string
-text_columns = ["title", "overview", "genres", "tagline", "cast", "director", "writers", "production_companies"]
-df[text_columns] = df[text_columns].fillna("")
+text_columns = ["title", "overview", "genres", "cast", "director"]
+df[text_columns] = df[text_columns].fillna("").astype(str)
 
 # Apply preprocessing
-for col in text_columns:
-    df[col] = df[col].apply(preprocess_text)
+for col in text_columns[1:]:
+    df[col] = df[col].apply(clean_special_characters).apply(preprocess_text)
 
+# Combine text columns for search content
+df["search_content"] = df[text_columns].apply(lambda row: " ".join(row), axis=1)
 
-# Combine title, overview, genres, tagline, cast, director, and writers
-df["search_content"] = df[
-    ["title", "overview", "genres", "tagline", "cast", "director", "writers"]
-].apply(lambda row: " ".join(row), axis=1)
+df.replace(["null"], np.nan, inplace=True)
+df["title"].replace("nan", "Nan")
+df = df.dropna()
+df = df[(df != "" ).all(axis=1)]
 
-
+# Save preprocessed dataset
 df.to_csv("./preprocessed_movies_clean.csv", index=False)
 
 
