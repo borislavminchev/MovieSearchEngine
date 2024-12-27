@@ -53,11 +53,13 @@ df[text_columns] = df[text_columns].fillna("").astype(str)
 for col in text_columns[1:]:
     df[col] = df[col].apply(clean_special_characters).apply(preprocess_text)
 
+df.replace(["null"], np.nan, inplace=True)
+df["title"] = df["title"].apply(lambda x: x.lower())
+
 # Combine text columns for search content
 df["search_content"] = df[text_columns].apply(lambda row: " ".join(row), axis=1)
 
-df.replace(["null"], np.nan, inplace=True)
-df["title"].replace("nan", "Nan")
+df["title"].replace("nan", "Nan", inplace=True)
 df = df.dropna()
 df = df[(df != "" ).all(axis=1)]
 
