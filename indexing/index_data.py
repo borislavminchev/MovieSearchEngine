@@ -1,5 +1,6 @@
 from elasticsearch import Elasticsearch, helpers
 import pandas as pd
+import numpy as np
 
 es = Elasticsearch(
     "https://localhost:9200",
@@ -27,70 +28,3 @@ except helpers.BulkIndexError as e:
     print("Failed documents:")
     for error in e.errors:
         print(error)
-
-#
-# query = {
-#     "query": {
-#         "multi_match": {
-#             "query": "dream thriller",
-#             "fields": ["title", "overview"]
-#         }
-#     }
-# }
-
-# query = {
-#     "query": {
-#         "query_string" : {
-#                  "query" : "star wars",
-#                  "fuzziness":0
-#           }
-#     }
-# }
-
-# query = {
-#   "query": {
-#     "match": {
-#       "search_content": "star wars"
-#     }
-#   }
-# }
-
-# query = {
-#     "query": {
-#         "match": {
-#             "search_content": "star"
-#         }
-#     }
-# }
-
-# query_sorted = {
-#   "_source": ["search_content"],
-#     "query": {
-#         "match": {
-#             "search_content": "star"
-#         }
-#     },
-#   "sort": [
-#     {
-#       "_script": {
-#         "type": "number",
-#         "script": {
-#           "source": "String target = params.target; int count = 0; if (doc['search_content.raw'].size() > 0) { String text = doc['search_content.raw'].value; int index = 0; while ((index = text.indexOf(target, index)) != -1) { count++; index += target.length(); } } return count;",
-#           "params": {
-#             "target": "star"
-#           }
-#         },
-#         "order": "desc"
-#       }
-#     }
-#   ]
-# }
-
-# try:
-#     response = es.search(index="movies", body=query_sorted)
-#     print(response["hits"]['total']['value'])
-#     for hit in response["hits"]["hits"]:
-#         print(hit["_id"], hit["sort"][0],  " ----> ", hit["_source"]["search_content"].lower().count("star"))
-# except Exception as e:
-#     print(f"Error: {e}")
-
