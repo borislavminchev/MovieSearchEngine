@@ -6,14 +6,12 @@ from transformers.modeling_outputs import BaseModelOutput
 
 from sklearn.metrics.pairwise import cosine_similarity
 import re
-
-from preprocessing import preprocess_text
-
-
-
+from nltk.tokenize import word_tokenize
+import unicodedata
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
+from string import punctuation
 import nltk
 
 movies = [
@@ -33,6 +31,20 @@ movies = [
     "Parasite",
     "Gladiator"
 ]
+lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('english'))
+
+def preprocess_text(text):
+    tokens = word_tokenize(text)  # Tokenization
+    tokens = [word.lower() for word in tokens]  # Lowercasing
+    tokens = [word for word in tokens if word not in stop_words]  # Stopword removal
+    tokens = [
+        unicodedata.normalize('NFKD', word).encode('ascii', 'ignore').decode('utf-8', 'ignore')
+        for word in tokens  # Character Normalization
+    ]
+    tokens = [lemmatizer.lemmatize(word) for word in tokens]  # Lemmatization
+    tokens = [token for token in tokens if token not in punctuation]
+    return " ".join(tokens)
 
 movies = preprocess_text(movies)
 
