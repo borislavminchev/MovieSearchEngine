@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     print('______________________________________________')
 
-    query = "secret agent"
+    query = "science fiction adventure"
 
     # Get top 5 similar documents
     top_documents = tfidf_search.get_top_similar_documents(query, top_n=5)
