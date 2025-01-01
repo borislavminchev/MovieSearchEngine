@@ -10,9 +10,8 @@ from nltk.stem import WordNetLemmatizer
 from string import punctuation
 import unicodedata
 
-
 class MovieSearchEngine:
-    def __init__(self, csv_file, text_column, model_name='distilbert-base-cased', batch_size=16):
+    def __init__(self, csv_file, text_column, model_name='distilbert-base-cased', batch_size=64):
         """
         Initialize the search engine.
         :param csv_file: Path to the preprocessed CSV file.
@@ -43,20 +42,54 @@ class MovieSearchEngine:
         tokens = [lemmatizer.lemmatize(word) for word in tokens]  # Lemmatization
         tokens = [token for token in tokens if token not in punctuation]  # Remove punctuation
         return " ".join(tokens)
-
+    
     def __calculate_embeddings(self):
         """
-        Calculate embeddings for all movies in the dataset.
+        Calculate embeddings for all movies in the dataset using batch processing.
         """
+        all_texts = self.dataframe[self.text_column].tolist()
         embeddings = []
-        for i, text in enumerate(self.dataframe[self.text_column]):
-            if(i == 500):
-                break
+
+        # Process in batches
+        for i in range(0, len(all_texts), self.batch_size):
             print(i)
-            embeddings.append(self.__calculate_text_embedding(text))
-        return np.array(embeddings)
+            batch_texts = all_texts[i:i + self.batch_size]
+            batch_embeddings = self.__calculate_batch_embeddings(batch_texts)
+            embeddings.append(batch_embeddings)
 
         return np.vstack(embeddings)  # Combine all batches into a single array
+
+    @torch.no_grad()
+    def __calculate_batch_embeddings(self, texts):
+        """
+        Calculate embeddings for a batch of texts.
+        """
+        tokens = self.tokenizer(
+            texts, return_tensors='pt', truncation=True, padding=True, max_length=512
+        )
+
+        # Move tokens and model to GPU if available
+        if torch.cuda.is_available():
+            tokens = {key: val.cuda() for key, val in tokens.items()}
+            self.model = self.model.cuda()
+
+        output = self.model(**tokens)
+        # Return only the CLS token embeddings (first token)
+        return output.last_hidden_state[:, 0, :].cpu().numpy()
+
+    # def __calculate_embeddings(self):
+    #     """
+    #     Calculate embeddings for all movies in the dataset.
+    #     """
+    #     embeddings = []
+    #     for i, text in enumerate(self.dataframe[self.text_column]):
+    #         if(i == 5000):
+    #             break
+    #         print(i)
+    #         embeddings.append(self.__calculate_text_embedding(text))
+    #     return np.array(embeddings)
+
+    #     return np.vstack(embeddings)  # Combine all batches into a single array
     
     @torch.no_grad()
     def __calculate_text_embedding(self, text):
@@ -66,20 +99,42 @@ class MovieSearchEngine:
         tokens = self.tokenizer(text, return_tensors='pt', truncation=True, padding=True)
         output = self.model(**tokens)
         return output.last_hidden_state[:, 0, :].squeeze().numpy()
-
+    
+    @torch.no_grad()
     def search(self, query, top_n=5):
         """
         Perform a search for the given query and return the top N results.
         :param query: The search query.
         :param top_n: Number of top results to return.
         """
+        # Preprocess the query
         query = self.preprocess_text(query)
-        query_embedding = self.__calculate_text_embedding(query)
-        similarities = self.__calculate_similarity(query_embedding, self.embeddings)
-        top_indices = similarities.argsort()[-top_n:][::-1]
         
+        # Use __calculate_batch_embeddings to calculate the embedding for a single query
+        query_embedding = self.__calculate_batch_embeddings([query]).squeeze(0)  # Remove batch dimension
+
+        # Convert embeddings to PyTorch tensor if not already
+        if not isinstance(self.embeddings, torch.Tensor):
+            self.embeddings = torch.tensor(self.embeddings, dtype=torch.float)
+
+        # Move embeddings to the same device as the query embedding
+        device = query_embedding.device
+        self.embeddings = self.embeddings.to(device)
+        
+        # Compute similarities
+        similarities = self.__calculate_similarity(query_embedding, self.embeddings)
+        
+        # Sort indices in descending order of similarity
+        top_indices = similarities.argsort()[:top_n]  # Use PyTorch sorting
+        
+        # Convert indices to a list if working with pandas
+        top_indices = top_indices.tolist()  # Convert to numpy array
+        
+        # Retrieve results
         results = self.dataframe.iloc[top_indices]
-        return [(row['title'], similarities[idx]) for idx, row in results.iterrows()]
+        return [(row['title'], similarities[i].item()) for i, (_, row) in zip(top_indices, results.iterrows())]
+
+
 
     def __calculate_similarity(self, query_embedding, movie_embeddings):
         """
