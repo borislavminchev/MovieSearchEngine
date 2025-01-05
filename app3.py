@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
+import torch.nn as nn
 from transformers import DistilBertTokenizer, DistilBertModel
 from sklearn.metrics.pairwise import cosine_similarity
 import nltk
@@ -55,7 +56,9 @@ class MovieSearchEngine:
             print(i)
             batch_texts = all_texts[i:i + self.batch_size]
             batch_embeddings = self.__calculate_batch_embeddings(batch_texts)
-            embeddings.append(batch_embeddings)
+            # Move batch embeddings to CPU and convert to NumPy
+            embeddings.append(batch_embeddings.cpu().numpy())
+            # embeddings.append(batch_embeddings)
 
         return np.vstack(embeddings)  # Combine all batches into a single array
 
@@ -64,6 +67,10 @@ class MovieSearchEngine:
         """
         Calculate embeddings for a batch of texts.
         """
+        if not texts:
+            return torch.empty(0, self.model.config.hidden_size)  # Return an empty tensor
+
+
         tokens = self.tokenizer(
             texts, return_tensors='pt', truncation=True, padding=True, max_length=512
         )
@@ -74,8 +81,11 @@ class MovieSearchEngine:
             self.model = self.model.cuda()
 
         output = self.model(**tokens)
-        # Return only the CLS token embeddings (first token)
-        return output.last_hidden_state[:, 0, :].cpu().numpy()
+        # Mean pooling: average over the token embeddings (ignoring padding tokens)
+        attention_mask = tokens['attention_mask'].unsqueeze(-1)  # (batch_size, seq_len, 1)
+        sum_embeddings = torch.sum(output.last_hidden_state * attention_mask, dim=1)
+        sum_mask = attention_mask.sum(dim=1)
+        return sum_embeddings / sum_mask  # Divide by the number of non-padded tokens
 
     # def __calculate_embeddings(self):
     #     """
@@ -125,7 +135,7 @@ class MovieSearchEngine:
         similarities = self.__calculate_similarity(query_embedding, self.embeddings)
         
         # Sort indices in descending order of similarity
-        top_indices = similarities.argsort()[:top_n]  # Use PyTorch sorting
+        top_indices = similarities.argsort()[-top_n:][::-1]
         
         # Convert indices to a list if working with pandas
         top_indices = top_indices.tolist()  # Convert to numpy array
@@ -133,14 +143,17 @@ class MovieSearchEngine:
         # Retrieve results
         results = self.dataframe.iloc[top_indices]
         return [(row['title'], similarities[i].item()) for i, (_, row) in zip(top_indices, results.iterrows())]
-
-
-
     def __calculate_similarity(self, query_embedding, movie_embeddings):
         """
         Calculate cosine similarity between the query embedding and movie embeddings.
         """
-        return cosine_similarity([query_embedding], movie_embeddings)[0]
+        # Ensure embeddings are on the CPU and converted to NumPy arrays
+        query_embedding_np = query_embedding.cpu().numpy()
+        movie_embeddings_np = movie_embeddings.cpu().numpy()
+        
+        # Use sklearn's cosine_similarity
+        return cosine_similarity([query_embedding_np], movie_embeddings_np)[0]
+
 
 
 # Example usage
