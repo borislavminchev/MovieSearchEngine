@@ -60,10 +60,8 @@ class MovieDataPreprocessor:
         # Apply preprocessing steps
         text_columns = ["title", "overview", "genres", "cast", "director"]
 
-        self.df[text_columns] = self.df[text_columns].fillna("").astype(str)  # Fill missing text fields
-        
         # Clean and preprocess the text columns
-        for col in text_columns[1:]:
+        for col in text_columns:
             self.df[col] = self.df[col].apply(self.clean_special_characters).apply(self.preprocess_text)
         
         # Process 'title' column
@@ -73,9 +71,10 @@ class MovieDataPreprocessor:
         self.df["search_content"] = self.df[text_columns].apply(lambda row: " ".join(row), axis=1)
         
         # Replace 'nan' with 'Nan' and remove empty or null entries
-        self.df["title"].replace("nan", "Nan", inplace=True)
-        self.df = self.df.dropna()  # Remove any rows with NaN values
-        self.df = self.df[(self.df != "").all(axis=1)]  # Remove empty rows
+        self.df.replace(["nan", "NaN", None, "null"], "", inplace=True)
+        self.df = self.df.fillna("")
+        self.df = self.df[(self.df != "").all(axis=1)]
+        self.df = self.df[self.df.notna().all(axis=1)]
     
     def save_preprocessed_data(self):
         # Save the preprocessed data to CSV

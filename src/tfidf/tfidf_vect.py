@@ -95,13 +95,12 @@ class TfidfSearch:
         # Convert query vector to sparse format
         return csr_matrix(query_tfidf)
     
-    def get_top_similar_documents(self, query, top_n=5):
+    def search(self, query, top_n=5):
         # Get top N similar documents based on cosine similarity
         query_vector_sparse = self.transform_query(query)
         similarity_scores = cosine_similarity(self.tfidf_matrix, query_vector_sparse)
         
         # Get top N similar document indices
         top_indices = similarity_scores.flatten().argsort()[-top_n:][::-1]
-        top_documents = [(self.df['id'][index], similarity_scores[index][0]) for index in top_indices]
         
-        return top_documents
+        return [self.df['id'][index] for index in top_indices]
