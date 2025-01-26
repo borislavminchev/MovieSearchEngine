@@ -10,11 +10,8 @@ if __name__ == "__main__":
     # Initialize the TfidfSearch object
     tfidf_search = TfidfSearch(df)
 
-    # Fit the model (build the TF-IDF matrix)
-    tfidf_search.fit()
-
     # Query
-    query = "star wars"
+    query = "star war"
 
     # Get top 5 similar documents
     top_documents = tfidf_search.search(query, top_n=5)

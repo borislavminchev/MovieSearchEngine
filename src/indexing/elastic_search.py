@@ -8,7 +8,7 @@ class ElasticsearchEngine:
             basic_auth=("elastic", "HO6XqXf8Z_-UtrCDhuZy")
         )
 
-    def search(self, search_string, top_n=5):
+    def search(self, search_string, top_n):
         query = {
             "query": {
                 "match": {
@@ -17,6 +17,6 @@ class ElasticsearchEngine:
             }
         }
 
-        response = self.es.search(index="movies", body=query)
+        response = self.es.search(index="movies", body=query, size=top_n)
         return [hit["_source"]['id'] for hit in response["hits"]["hits"][:top_n]]
   

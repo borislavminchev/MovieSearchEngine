@@ -1,35 +1,43 @@
-from collections import Counter
-from scipy.sparse import csr_matrix, vstack
+import os
+import pickle
 import numpy as np
-import pandas as pd
+from scipy.sparse import csr_matrix, vstack
 from sklearn.metrics.pairwise import cosine_similarity
-from nltk.tokenize import word_tokenize
+from collections import Counter
 from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
-from string import punctuation
 import unicodedata
+from string import punctuation
 
 class TfidfSearch:
-    def __init__(self, dataframe, text_column='search_content'):
-        # Initialize with the dataframe and the column that contains text data
+    def __init__(self, dataframe, text_column='search_content', cache_file='tfidf_cache.pkl'):
+        """
+        Initialize the TF-IDF Search engine.
+        :param dataframe: Input pandas DataFrame containing text data.
+        :param text_column: Column name with the text to process.
+        :param cache_file: Path to the cache file for saving/loading precomputed data.
+        """
         self.df = dataframe
         self.text_column = text_column
-        
-        # Initialize variables for vocabulary, document frequencies, and IDF
-        self.vocabulary = {}
-        self.doc_freq = Counter()
-        self.doc_count = len(self.df)
-        self.idf = {}
-        
+        self.cache_file = cache_file
+
         # NLTK setup
         self.lemmatizer = WordNetLemmatizer()
         self.stop_words = set(stopwords.words('english'))
+        
+        self.doc_freq = Counter()
+        self.vocabulary = {}
 
-        # Preprocess data and build the vocabulary
-        self._build()
+        # Load or build data
+        if os.path.exists(cache_file):
+            self.__load_cache()
+        else:
+            self.__build()
+            self.__fit()
+            self.__save_cache()
 
     def _preprocess_text(self, text):
-        # Tokenize, lowercase, remove stopwords, normalize characters, and lemmatize
         tokens = word_tokenize(text)  # Tokenization
         tokens = [word.lower() for word in tokens]  # Lowercasing
         tokens = [word for word in tokens if word not in self.stop_words]  # Stopword removal
@@ -41,8 +49,10 @@ class TfidfSearch:
         tokens = [token for token in tokens if token not in punctuation]
         return " ".join(tokens)
     
-    def _build(self):
-        # Build vocabulary and calculate document frequencies
+    def __build(self):
+        """
+        Build the vocabulary and calculate document frequencies.
+        """
         for doc in self.df[self.text_column]:
             terms = set(doc.split())  # Get unique terms in document
             for term in terms:
@@ -52,7 +62,7 @@ class TfidfSearch:
         
         # Compute IDF (Inverse Document Frequency)
         self.idf = {
-            term: np.log((1 + self.doc_count) / (1 + freq)) + 1  # Add 1 for smoothing
+            term: np.log((1 + len(self.df)) / (1 + freq)) + 1  # Add 1 for smoothing
             for term, freq in self.doc_freq.items()
         }
 
@@ -68,13 +78,38 @@ class TfidfSearch:
                 values.append(tf * self.idf[term])
         return csr_matrix((values, (np.zeros(len(indices)), indices)), shape=(1, len(self.vocabulary)))
     
-    def fit(self):
-        # Compute TF-IDF sparse matrix for the entire dataset
+    def __fit(self):
+        """
+        Compute TF-IDF sparse matrix for the entire dataset.
+        """
         rows = [self._compute_tfidf_vector(doc) for doc in self.df[self.text_column]]
         self.tfidf_matrix = csr_matrix(vstack(rows))
+
+    def __save_cache(self):
+        """
+        Save precomputed TF-IDF data to the cache file.
+        """
+        with open(self.cache_file, 'wb') as f:
+            pickle.dump({
+                'vocabulary': self.vocabulary,
+                'idf': self.idf,
+                'tfidf_matrix': self.tfidf_matrix
+            }, f)
+
+    def __load_cache(self):
+        """
+        Load precomputed TF-IDF data from the cache file.
+        """
+        with open(self.cache_file, 'rb') as f:
+            cache = pickle.load(f)
+            self.vocabulary = cache['vocabulary']
+            self.idf = cache['idf']
+            self.tfidf_matrix = cache['tfidf_matrix']
     
     def transform_query(self, query):
-        # Preprocess the query and compute its TF-IDF vector
+        """
+        Preprocess the query and compute its TF-IDF vector.
+        """
         query_terms = self._preprocess_text(query).split()
         query_tf = {}
         total_terms = len(query_terms)
@@ -96,7 +131,9 @@ class TfidfSearch:
         return csr_matrix(query_tfidf)
     
     def search(self, query, top_n=5):
-        # Get top N similar documents based on cosine similarity
+        """
+        Search for top N similar documents based on cosine similarity.
+        """
         query_vector_sparse = self.transform_query(query)
         similarity_scores = cosine_similarity(self.tfidf_matrix, query_vector_sparse)
         

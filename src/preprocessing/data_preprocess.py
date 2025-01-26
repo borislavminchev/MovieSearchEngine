@@ -75,6 +75,31 @@ class MovieDataPreprocessor:
         self.df = self.df.fillna("")
         self.df = self.df[(self.df != "").all(axis=1)]
         self.df = self.df[self.df.notna().all(axis=1)]
+
+
+    def apply_preprocessing_2(self):
+        # Create a separate DataFrame for text preprocessing
+        temp_df = self.df.copy()
+
+        # Apply preprocessing steps
+        text_columns = ["title", "overview", "genres", "cast", "director"]
+
+        # Clean and preprocess the text columns
+        for col in text_columns:
+            temp_df[col] = temp_df[col].apply(self.clean_special_characters).apply(self.preprocess_text)
+        
+        temp_df.replace(["nan", "NaN", None, "null"], "", inplace=True)
+        temp_df = temp_df.fillna("")
+        temp_df = temp_df[(temp_df != "").all(axis=1)]
+        temp_df = temp_df[temp_df.notna().all(axis=1)]
+
+        
+        temp_df["search_content"] = temp_df[text_columns].apply(lambda row: " ".join(row), axis=1)
+
+        temp_df = temp_df[temp_df["search_content"] != ""]
+
+        self.df = self.df.loc[temp_df.index]
+        self.df["search_content"] = temp_df["search_content"]
     
     def save_preprocessed_data(self):
         # Save the preprocessed data to CSV
@@ -83,13 +108,13 @@ class MovieDataPreprocessor:
     def preprocess(self):
         # Encapsulate the entire process
         self.load_data()
-        self.apply_preprocessing()
+        self.apply_preprocessing_2()
         self.save_preprocessed_data()
 
 # Example usage:
 if __name__ == "__main__":
     input_file = "./TMDB_all_movies.csv"
-    output_file = "./preprocessed_movies_clean.csv"
+    output_file = "./raw_movies_clean.csv"
     
     preprocessor = MovieDataPreprocessor(input_file, output_file)
     preprocessor.preprocess()

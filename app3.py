@@ -51,8 +51,8 @@ class Metrics:
 
 
     def measure(self, query):
-        result = self.search_engine.search(query, top_n=15)
-        truth = self.elasticsearch.search(query, top_n=15)
+        result = self.search_engine.search(query, top_n=30)
+        truth = self.elasticsearch.search(query, top_n=30)
         print(result, '\n', truth)
         return self.__get_metrics(result, truth)
     
@@ -61,16 +61,17 @@ class Metrics:
 # Example usage
 if __name__ == "__main__":
     # Path to the preprocessed CSV
-    csv_file = "./preprocessed_movies_clean.csv"
-    text_column = "title"
+    csv_file = "./raw_movies_clean.csv"
+    text_column = "overview"
 
     # Initialize the search engine
-    # search_engine = MovieSearchEngine(csv_file, text_column)
+    search_engine = MovieSearchEngine(csv_file, text_column, embeddings_file='./embeddings_ov.pkl')
 
     # Search for a query
-    query = "star"
+    query = "lightsaber jedi"
     # top_results = search_engine.search(query, top_n=5)
 
+    # print(top_results)
     elastic = ElasticsearchEngine()
     # res = elastic.search("star")
 
@@ -79,10 +80,9 @@ if __name__ == "__main__":
     # Initialize the TfidfSearch object
     tfidf_search = TfidfSearch(df)
 
-    # Fit the model (build the TF-IDF matrix)
-    tfidf_search.fit()
 
-
+    metrics = Metrics(search_engine, elastic)
+    print(metrics.measure(query))
     metrics = Metrics(tfidf_search, elastic)
     print(metrics.measure(query))
 

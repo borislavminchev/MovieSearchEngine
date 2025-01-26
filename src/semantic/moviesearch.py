@@ -81,31 +81,43 @@ class MovieSearchEngine:
             # embeddings.append(batch_embeddings)
 
         return np.vstack(embeddings)  # Combine all batches into a single array
-
+    
     @torch.no_grad()
     def __calculate_batch_embeddings(self, texts):
-        """
-        Calculate embeddings for a batch of texts.
-        """
-        if not texts:
-            return torch.empty(0, self.model.config.hidden_size)  # Return an empty tensor
-
-
-        tokens = self.tokenizer(
-            texts, return_tensors='pt', truncation=True, padding=True, max_length=512
-        )
-
-        # Move tokens and model to GPU if available
+        tokens = self.tokenizer(texts, return_tensors='pt', truncation=True, padding=True, max_length=512)
+        
         if torch.cuda.is_available():
             tokens = {key: val.cuda() for key, val in tokens.items()}
             self.model = self.model.cuda()
-
+        
         output = self.model(**tokens)
-        # Mean pooling: average over the token embeddings (ignoring padding tokens)
-        attention_mask = tokens['attention_mask'].unsqueeze(-1)  # (batch_size, seq_len, 1)
-        sum_embeddings = torch.sum(output.last_hidden_state * attention_mask, dim=1)
-        sum_mask = attention_mask.sum(dim=1)
-        return sum_embeddings / sum_mask  # Divide by the number of non-padded tokens
+        return output.last_hidden_state[:, 0, :]  # CLS token embedding
+
+
+    # @torch.no_grad()
+    # def __calculate_batch_embeddings(self, texts):
+    #     """
+    #     Calculate embeddings for a batch of texts.
+    #     """
+    #     if not texts:
+    #         return torch.empty(0, self.model.config.hidden_size)  # Return an empty tensor
+
+
+    #     tokens = self.tokenizer(
+    #         texts, return_tensors='pt', truncation=True, padding=True, max_length=512
+    #     )
+
+    #     # Move tokens and model to GPU if available
+    #     if torch.cuda.is_available():
+    #         tokens = {key: val.cuda() for key, val in tokens.items()}
+    #         self.model = self.model.cuda()
+
+    #     output = self.model(**tokens)
+    #     # Mean pooling: average over the token embeddings (ignoring padding tokens)
+    #     attention_mask = tokens['attention_mask'].unsqueeze(-1)  # (batch_size, seq_len, 1)
+    #     sum_embeddings = torch.sum(output.last_hidden_state * attention_mask, dim=1)
+    #     sum_mask = attention_mask.sum(dim=1)
+    #     return sum_embeddings / sum_mask  # Divide by the number of non-padded tokens
 
     # def __calculate_embeddings(self):
     #     """
@@ -131,7 +143,7 @@ class MovieSearchEngine:
         return output.last_hidden_state[:, 0, :].squeeze().numpy()
     
     @torch.no_grad()
-    def search(self, query, top_n=5):
+    def search(self, query, top_n):
         """
         Perform a search for the given query and return the top N results.
         :param query: The search query.
