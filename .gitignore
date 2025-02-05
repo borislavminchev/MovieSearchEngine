@@ -175,5 +175,7 @@ pyrightconfig.json
 
 TMDB_all_movies.csv
 preprocessed_movies_clean.csv
+*.csv
+*.pkl
 
 # End of https://www.toptal.com/developers/gitignore/api/python
