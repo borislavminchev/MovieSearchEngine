@@ -1,4 +1,4 @@
-from src.semantic.moviesearch import MovieSearchEngine
+from src.semantic import MovieSearchEngine, MovieSearchEngineV2
 from src.indexing.elastic_search import ElasticsearchEngine
 import pandas as pd
 from src.tfidf.tfidf_vect import TfidfSearch
@@ -65,10 +65,12 @@ if __name__ == "__main__":
     text_column = "overview"
 
     # Initialize the search engine
-    search_engine = MovieSearchEngine(csv_file, text_column, embeddings_file='./embeddings_ov.pkl')
+    # search_engine = MovieSearchEngine(csv_file, text_column, embeddings_file='./embeddings_ov.pkl')
+    search_engine = MovieSearchEngineV2(csv_file='./raw_movies_clean.csv', text_column='overview', 
+                                 embeddings_file='./raw_embeddings_v2.pkl', use_mean_pooling=True)
 
     # Search for a query
-    query = "lightsaber jedi"
+    query = "intergalactic story where jedy knight and siths battle with lightsabers for the peace of the galaxy"
     # top_results = search_engine.search(query, top_n=5)
 
     # print(top_results)
