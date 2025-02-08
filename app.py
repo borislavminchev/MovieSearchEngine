@@ -1,99 +1,155 @@
-from typing import Tuple
-import torch
+import os
+import pickle
 import numpy as np
+import torch
 from transformers import DistilBertTokenizer, DistilBertModel
-from transformers.modeling_outputs import BaseModelOutput
-
 from sklearn.metrics.pairwise import cosine_similarity
-import re
-from nltk.tokenize import word_tokenize
+import pandas as pd
 import unicodedata
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 from string import punctuation
 import nltk
 
-movies = [
-    "The Godfather",
-    "The Shawshank Redemption",
-    "Schindler's List",
-    "Forrest Gump",
-    "The Matrix",
-    "Inception",
-    "The Dark Knight",
-    "Pulp Fiction",
-    "Fight Club",
-    "Interstellar",
-    "The Lord of the Rings: The Return of the King",
-    "The Empire Strikes Back",
-    "The Silence of the Lambs",
-    "Parasite",
-    "Gladiator"
-]
-lemmatizer = WordNetLemmatizer()
-stop_words = set(stopwords.words('english'))
+# Ensure required NLTK resources are downloaded (ideally done once)
+nltk.download('punkt', quiet=True)
+nltk.download('stopwords', quiet=True)
+nltk.download('wordnet', quiet=True)
 
-def preprocess_text(text):
-    tokens = word_tokenize(text)  # Tokenization
-    tokens = [word.lower() for word in tokens]  # Lowercasing
-    tokens = [word for word in tokens if word not in stop_words]  # Stopword removal
-    tokens = [
-        unicodedata.normalize('NFKD', word).encode('ascii', 'ignore').decode('utf-8', 'ignore')
-        for word in tokens  # Character Normalization
-    ]
-    tokens = [lemmatizer.lemmatize(word) for word in tokens]  # Lemmatization
-    tokens = [token for token in tokens if token not in punctuation]
-    return " ".join(tokens)
+class CombinedMovieSearchEngine:
+    def __init__(self,
+                 csv_file,
+                 title_embeddings_file,
+                 overview_embeddings_file,
+                 model_name='distilbert-base-cased',
+                 batch_size=64,
+                 title_weight=0.5,
+                 overview_weight=0.5):
+        """
+        Initialize the combined search engine.
+        
+        Parameters:
+            csv_file (str): Path to the CSV file containing movie data.
+            title_embeddings_file (str): Path to the precomputed title embeddings (.pkl).
+            overview_embeddings_file (str): Path to the precomputed overview embeddings (.pkl).
+            model_name (str): Pretrained transformer model name.
+            batch_size (int): Batch size for query encoding.
+            title_weight (float): Weight for the title cosine similarity.
+            overview_weight (float): Weight for the overview cosine similarity.
+        """
+        self.df = pd.read_csv(csv_file)
+        self.batch_size = batch_size
+        self.title_weight = title_weight
+        self.overview_weight = overview_weight
 
-movies = preprocess_text(movies)
+        # Initialize transformer model and tokenizer
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+        self.model = DistilBertModel.from_pretrained(model_name).to(self.device)
+        self.model.eval()
 
+        # Load precomputed embeddings from file (assumed to be numpy arrays)
+        with open(title_embeddings_file, 'rb') as f:
+            self.title_embeddings = pickle.load(f)
+        with open(overview_embeddings_file, 'rb') as f:
+            self.overview_embeddings = pickle.load(f)
+        
+        # Preprocessing resources for query text:
+        self.lemmatizer = WordNetLemmatizer()
+        self.stop_words = set(stopwords.words('english'))
+    
+    def preprocess_text(self, text):
+        """
+        Preprocess query text: tokenize, lowercase, remove stopwords,
+        normalize characters, lemmatize, and remove punctuation.
+        """
+        tokens = word_tokenize(text)
+        tokens = [word.lower() for word in tokens]
+        tokens = [word for word in tokens if word not in self.stop_words]
+        tokens = [
+            unicodedata.normalize('NFKD', word).encode('ascii', 'ignore').decode('utf-8', 'ignore')
+            for word in tokens
+        ]
+        tokens = [self.lemmatizer.lemmatize(word) for word in tokens]
+        tokens = [token for token in tokens if token not in punctuation]
+        return " ".join(tokens)
+    
+    @torch.no_grad()
+    def __calculate_query_embedding(self, query):
+        """
+        Compute the transformer-based embedding for the given query.
+        Uses mean pooling over the token embeddings (with attention mask).
+        """
+        processed_query = self.preprocess_text(query)
+        tokens = self.tokenizer(
+            [processed_query],
+            return_tensors='pt',
+            truncation=True,
+            padding=True,
+            max_length=512
+        )
+        tokens = {key: val.to(self.device) for key, val in tokens.items()}
+        outputs = self.model(**tokens)
+        last_hidden_state = outputs.last_hidden_state  # (batch_size, seq_len, hidden_dim)
+        attention_mask = tokens['attention_mask'].unsqueeze(-1).expand(last_hidden_state.size()).float()
+        sum_embeddings = torch.sum(last_hidden_state * attention_mask, dim=1)
+        sum_mask = torch.clamp(attention_mask.sum(dim=1), min=1e-9)
+        pooled_embedding = sum_embeddings / sum_mask  # (batch_size, hidden_dim)
+        return pooled_embedding
 
-
-def movie_to_string(movie):
-    return movie
-
-class SearcEngine:
-    def __init__(self, movies):
-        self.movies = movies
-        self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
-        self.model = DistilBertModel.from_pretrained('distilbert-base-cased')
-        self.embeddings = self.__calculate_embeddings(movies)
-
-    @torch.no_grad
     def search(self, query, top_n=5):
-        query_tokens = self.tokenizer(query, return_tensors='pt', truncation=True, padding=True)
-        output = self.model(**query_tokens)
-        query_embedding = output.last_hidden_state[:, 0, :].squeeze().numpy()
+        """
+        Given a query, compute the weighted sum of cosine similarities between the query embedding
+        and the precomputed title and overview embeddings. Return the top_n movie IDs.
+        
+        Parameters:
+            query (str): The search query.
+            top_n (int): Number of top results to return.
+        
+        Returns:
+            list: List of movie IDs from self.df['id'].
+        """
+        # Compute query embedding (for both title and overview, using the same text)
+        query_embedding = self.__calculate_query_embedding(query)
+        query_np = query_embedding.cpu().numpy()  # Shape: (1, hidden_dim)
+        
+        # Compute cosine similarities
+        cos_sim_title = cosine_similarity(query_np, self.title_embeddings)[0]
+        cos_sim_overview = cosine_similarity(query_np, self.overview_embeddings)[0]
+        
+        # Compute weighted similarity
+        weighted_sim = (self.title_weight * cos_sim_title +
+                        self.overview_weight * cos_sim_overview)
+        
+        # Get indices of the top_n movies (highest weighted similarity)
+        top_indices = np.argsort(weighted_sim)[-top_n:][::-1]
+        return self.df.iloc[top_indices]['id'].tolist()
 
-        similarities = self.__calculate_similarity(query_embedding, self.embeddings)
-        top_indices = similarities.argsort()[-top_n:][::-1]
-
-        return [(self.movies[i], similarities[i]) for i in top_indices]
+# Example usage:
+if __name__ == "__main__":
+    csv_file = "./raw_movies_clean.csv"
+    title_emb_file = "./embeddings.pkl"         # Embeddings computed on the "title" column
+    overview_emb_file = "./embeddings_ov.pkl"     # Embeddings computed on the "overview" column
     
-    def __calculate_embeddings(self, movies):
-        return np.array([self.__calculate_movie_embedding(movie) for movie in movies])
-
+    combined_engine = CombinedMovieSearchEngine(
+        csv_file=csv_file,
+        title_embeddings_file=title_emb_file,
+        overview_embeddings_file=overview_emb_file,
+        title_weight=0.25,
+        overview_weight=0.75
+    )
     
-    @torch.no_grad
-    def __calculate_movie_embedding(self, movie):
-        tokens = self.tokenizer(movie_to_string(movie), return_tensors='pt', truncation=True, padding=True)
-        output = self.model(**tokens)
-        return output.last_hidden_state[:, 0, :].squeeze().numpy()
-    
-    def __calculate_similarity(self, query_embedding, movie_embeddings):
-        return cosine_similarity([query_embedding], movie_embeddings)[0]
+    query = "star wars"
+    results = combined_engine.search(query, top_n=5)
+    print("Top movie IDs:", results)
 
-engine = SearcEngine(movies)
-# res1 = engine.search("psycho")
-res2 = engine.search("psycho")
-# print(res1)
-print(res2)
-print(movies)
-
-    
-
-
-
-
-
+    movie_titles = []
+    for movie_id in results:
+        # Assuming the dataframe contains a 'title' column
+        title = combined_engine.df.loc[combined_engine.df['id'] == movie_id, 'title'].values
+        if len(title) > 0:
+            movie_titles.append(title[0])
+        else:
+            movie_titles.append("Unknown Title")
+    print("Top movie titles:", movie_titles)
