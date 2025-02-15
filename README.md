@@ -16,5 +16,40 @@ pip install -r ./requirements.txt
 ```
 
 ```console
-python ./preprocessing/data_preprocess.py
+python ./src/preprocessing/data_preprocess.py
+```
+3. For Elasttic search to work plase use this mapping
+```json
+{
+  "mappings": {
+    "properties": {
+      "cast": {
+        "type": "text"
+      },
+      "director": {
+        "type": "text"
+      },
+      "genres": {
+        "type": "keyword"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "overview": {
+        "type": "text"
+      },
+      "search_content": {
+        "type": "text",
+        "fields": {
+            "raw": {
+                "type": "keyword"
+            }
+        }
+      },
+      "title": {
+          "type": "text"
+      }
+    }
+  }
+}
 ```
