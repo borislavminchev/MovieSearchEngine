@@ -12,7 +12,7 @@ from string import punctuation
 import pandas as pd
 
 class TfidfSearch:
-    def __init__(self, dataframe, text_column='search_content', cache_file='tfidf_cache.pkl'):
+    def __init__(self, dataframe, text_column='search_content', cache_file='tfidf_cache_new.pkl'):
         """
         Initialize the TF-IDF Search engine.
         :param dataframe: Input pandas DataFrame containing preprocessed text data.
@@ -37,6 +37,9 @@ class TfidfSearch:
             self.__build()    # Build vocabulary & compute document frequencies
             self.__fit()      # Compute TF-IDF vectors for all documents
             self.__save_cache()
+
+    def get_df(self):
+        return self.df
 
     def _preprocess_text(self, text):
         """

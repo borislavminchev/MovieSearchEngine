@@ -1,4 +1,4 @@
-from src.semantic import MovieSearchEngineV2  # Assuming we want to test V2
+from src.semantic import MovieSearchEngineV2, CombinedMovieSearchEngine  # Assuming we want to test V2
 from src.indexing.elastic_search import ElasticsearchEngine
 import pandas as pd
 from src.tfidf.tfidf_vect import TfidfSearch
@@ -50,11 +50,23 @@ if __name__ == "__main__":
     text_column = "overview"  # Using the "overview" column for semantic search.
     
     # Initialize the semantic search engine (MovieSearchEngineV2)
-    search_engine = MovieSearchEngineV2(
+    # search_engine = MovieSearchEngineV2(
+    #     csv_file=csv_file,
+    #     text_column=text_column,
+    #     embeddings_file='./raw_embeddings_v2.pkl',
+    #     use_mean_pooling=True
+    # )
+
+    # csv_file = "./raw_movies_clean.csv"
+    title_emb_file = "./raw_embeddings_v2.pkl"         # Embeddings computed on the "title" column
+    overview_emb_file = "./raw_embeddings_ov_v2.pkl"     # Embeddings computed on the "overview" column
+    
+    search_engine = CombinedMovieSearchEngine(
         csv_file=csv_file,
-        text_column=text_column,
-        embeddings_file='./raw_embeddings_v2.pkl',
-        use_mean_pooling=True
+        title_embeddings_file=title_emb_file,
+        overview_embeddings_file=overview_emb_file,
+        title_weight=0.25,
+        overview_weight=0.75
     )
     
     # Initialize the Elastic Search engine (ground truth).
@@ -64,7 +76,7 @@ if __name__ == "__main__":
     df = pd.read_csv("./preprocessed_movies_clean.csv")
     tfidf_search = TfidfSearch(df)  # Ensure df has the column expected by TfidfSearch.
     
-    query = "star wars"
+    query = "boxing"
     
     # Measure metrics for the semantic search engine.
     metrics_semantic = Metrics(search_engine, elastic)

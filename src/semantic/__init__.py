@@ -1,2 +1,3 @@
 from .moviesearch import MovieSearchEngine
 from .moviesearchV2 import MovieSearchEngineV2
+from .combinedsearch import CombinedMovieSearchEngine

@@ -49,6 +49,11 @@ class CombinedMovieSearchEngine:
         self.model = DistilBertModel.from_pretrained(model_name).to(self.device)
         self.model.eval()
 
+        # Ensure required NLTK resources are downloaded (ideally done once)
+        nltk.download('punkt', quiet=True)
+        nltk.download('stopwords', quiet=True)
+        nltk.download('wordnet', quiet=True)
+
         # Load precomputed embeddings from file (assumed to be numpy arrays)
         with open(title_embeddings_file, 'rb') as f:
             self.title_embeddings = pickle.load(f)
@@ -58,6 +63,9 @@ class CombinedMovieSearchEngine:
         # Preprocessing resources for query text:
         self.lemmatizer = WordNetLemmatizer()
         self.stop_words = set(stopwords.words('english'))
+
+    def get_df(self):
+        return self.df
     
     def preprocess_text(self, text):
         """
@@ -125,31 +133,3 @@ class CombinedMovieSearchEngine:
         # Get indices of the top_n movies (highest weighted similarity)
         top_indices = np.argsort(weighted_sim)[-top_n:][::-1]
         return self.df.iloc[top_indices]['id'].tolist()
-
-# Example usage:
-if __name__ == "__main__":
-    csv_file = "./raw_movies_clean.csv"
-    title_emb_file = "./embeddings.pkl"         # Embeddings computed on the "title" column
-    overview_emb_file = "./embeddings_ov.pkl"     # Embeddings computed on the "overview" column
-    
-    combined_engine = CombinedMovieSearchEngine(
-        csv_file=csv_file,
-        title_embeddings_file=title_emb_file,
-        overview_embeddings_file=overview_emb_file,
-        title_weight=0.25,
-        overview_weight=0.75
-    )
-    
-    query = "star wars"
-    results = combined_engine.search(query, top_n=5)
-    print("Top movie IDs:", results)
-
-    movie_titles = []
-    for movie_id in results:
-        # Assuming the dataframe contains a 'title' column
-        title = combined_engine.df.loc[combined_engine.df['id'] == movie_id, 'title'].values
-        if len(title) > 0:
-            movie_titles.append(title[0])
-        else:
-            movie_titles.append("Unknown Title")
-    print("Top movie titles:", movie_titles)

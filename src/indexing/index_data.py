@@ -14,7 +14,7 @@ df = pd.read_csv("./preprocessed_movies_clean.csv")
 
 actions = [
     {
-        "_index": "movies",
+        "_index": "movies_sem",
         "_id": doc["id"],
         "_source": doc
     } 
@@ -48,13 +48,13 @@ except helpers.BulkIndexError as e:
 #     }
 # }
 
-query = {
-    "query": {
-        "match": {
-            "search_content": "star"
-        }
-    }
-}
+# query = {
+#     "query": {
+#         "match": {
+#             "search_content": "star"
+#         }
+#     }
+# }
 
 # query_sorted = {
 #   "_source": ["search_content"],
