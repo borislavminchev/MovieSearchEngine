@@ -18,7 +18,7 @@ pip install -r ./requirements.txt
 ```console
 python ./src/preprocessing/data_preprocess.py
 ```
-3. For Elasttic search to work plase use this mapping
+3. For Elasttic search to work, please use this mapping
 ```json
 {
   "mappings": {
